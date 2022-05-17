@@ -1,0 +1,1692 @@
+var months = {
+    "jan": firstLetter(lang["f0eadcecffbb5f66bf549645d20bd0cd"]),
+    "febr": firstLetter(lang["b8a8de82dd0387e97241d76edb64c78e"]),
+    "marc": firstLetter(lang["99d26c335ff06a1f4f32e1b78ccc0855"]),
+    "apr": firstLetter(lang["2d0ea4e2a5d29e1321ae6d9ff1861052"]),
+    "maj": firstLetter(lang["c0a48f32c11d4e56173d7bb151154236"]),
+    "jun": firstLetter(lang["00a5cf879180a196bf1720187b4a29ba"]),
+    "jul": firstLetter(lang["23176c991f48ba3a17942b82cc7787b2"]),
+    "aug": firstLetter(lang["19c1b76c51e0eb5d5c92221e6e891bad"]),
+    "szept": firstLetter(lang["1f17626a373b6a69f8287ed8781e1e0a"]),
+    "okt": firstLetter(lang["4caa55b7c609d00fb95f03cd1ceafeab"]),
+    "nov": firstLetter(lang["b575d8d37fffa782cfa3592d1cfc65da"]),
+    "dec": firstLetter(lang["a0bccd9315fa3e38aef93f34cd116aa9"])
+};
+
+function firstLetter(string) {
+  return string.charAt(0).toLowerCase() + string.slice(1);
+}
+
+
+var months_script_format = {[months.jan]: 0, [months.febr]: 1, [months.marc]: 2, [months.apr]: 3, [months.maj]: 4, [months.jun]: 5, [months.jul]: 6, [months.aug]: 7, [months.szept]: 8, [months.okt]: 9, [months.nov]: 10, [months.dec]: 11};
+
+var platform = "";
+var player_search_selector = "";
+
+//sitter
+var dep = "";
+if(document.location.href.indexOf("?t=") > -1){//helyettesítés alatt van??
+	dep = document.location.href.match(/t=\d+/)[0];
+	dep += "&";
+}
+
+var target_ids = [];
+var exceptions = [];
+
+var forum_load_progress = 0; //selected page (calculating below)
+var all_pages = 0;			//all pages in forum
+var counting = 1; 			//for_trains_listing
+
+var date_time = new Date();
+
+var storage_keys;
+var scrip_newest_version = 1.4;
+
+var unit_speeds = {"spear": 18,"sword": 22,"axe": 18,"archer": 18,"spy": 9,"light": 10,"marcher": 10,"heavy": 11,"ram": 30,"catapult": 30,"knight": 10,"snob": 35};
+var word_unit_speed = 0; 
+var word_speed = 0; 
+
+var trains = [];
+var available_units = [];
+var player_accelerators = {};
+var samples = [];
+var launches = [];
+var for_stat = {};
+
+//MEMO audio
+var sound;//a hangjelzéshez az interválok beállításához/leállításához
+var mp = 0; 
+var difference; //a kh és a gép órájának az eltérése, későbbi kalkuláláshoz
+var gameTimeIsMore; //true/false, későbbi kulkuláláshoz
+var calculations = []; // tömb ami majd tárolni fogja az összes indítás teljes adatait
+
+if(document.location.href.indexOf("thread_id") > -1){
+	platform = "forum";
+	player_search_selector = ".postheader_left";	
+	getting_storage_keys();
+	version_check();
+	load_word_config();
+	script_main_form();
+	script_css();
+	load_settings();
+	ev_listeners();
+	forum_pages_check();
+}else if(document.location.href.indexOf("mode=incomings") > -1){
+	platform = "incommings";
+	player_search_selector = ".postheader_left";
+	getting_storage_keys();
+	version_check();
+	load_word_config();
+	script_main_form();
+	script_css();
+	load_settings();
+	ev_listeners();
+}else if(document.location.href.indexOf("screen=mail") > -1 && document.location.href.indexOf("mode=view") > -1){
+	platform = "private_mails";
+	player_search_selector = ".author";	
+	getting_storage_keys();
+	version_check();
+	load_word_config();
+	script_main_form();
+	script_css();
+	load_settings();
+	ev_listeners();
+}else if(document.location.href.indexOf("screen=memo") > -1){
+	memo_assistant();
+}else{
+	UI.ErrorMessage("A scriptet az alábbi oldalak valamelyikén futtasd: bejövő parancsok, fórum téma, privát üzenet");
+}
+
+function set_default_storage_keys(){
+	localStorage.setItem("cutter_script_settings", `{"version": 1.4,
+													"cuts_per_village": 1,
+													"launch_time_exceptions": false,
+													"launch_time_exceptions_min": 1,
+													"launch_time_exceptions_max": 4,
+													"samples": {"fix_units_index": [],
+																"fix_units" : []}
+													}`);
+}
+function version_check(){
+	if(parseFloat(storage_keys.version) != scrip_newest_version){
+		storage_keys.version = scrip_newest_version;
+		localStorage.setItem("cutter_script_settings", JSON.stringify(storage_keys));
+		
+		$("body").append(`<div id = "news_form" style = "width: 300px; height: auto; border: 1px solid black; margin: 5px; padding: 10px; position: fixed; top: 50px; background-color: yellow;">
+			<label class = "removable_string" style = "font-weight: bold;">Új verzió!</label>
+			<a href = "javascript:;" style = "float: right; margin-left: 10px;" onclick = "$('#news_form').remove();">» Bezár</a>
+			<a class = "removable_string"  href = "javascript:;" style = "float: right;" onclick = "show_version_news()">» Részletek</a>
+			<div id = "news_container" style = "display: none;">
+				<b>v1.4</b> frissítései:
+				<ul>
+					<li>Jelentett hibák javítva lettek...</li>
+				</ul>
+				<b>v1.3</b> frissítései:
+				<ul>
+					<li>Volt hogy rosszul számolta az indítási időket. Ez lett javítva</li>
+					<li>A fórumon, az azt befolyásoló jogokkal rendelkező tagoknál a script "kétszer indult". Ez is javítva lett</li>
+				</ul>
+				<b>v1.2</b> frissítései:
+				<ul>
+					<li>A fórumnál/privát üzeneteknél a script mostantól a vonatok beolvasása közben a "hibás" posztokra ügyelni fog, és amennyiben ha talál ilyet, akkor a hibás adatokat tartalmazó támadott falut kihagyja a listázásból illetve feltünteti a felhasználónak hogy melyik posztban, melyik ponton és milyen hiba van.
+					Hibás posztnak számít az, melynek a KH által generált erősítés kérési szövegén belül a felhasználó valamilyen változtatást végzett posztolás előtt amit a script nem tud felismerni és/vagy kezelni a beolvasáskor. (bb kódos kiemelés, érkezési időpont átformázása, stb...)</li>
+				</ul>
+				<b>v1.1</b> frissítései:
+				<ul>
+					<li>A script futtatható a jegyzetben a táblázatoknál is - megkapta az "Indítási asszisztens" funkciót. Bővebben a fórumtémánál olvashatsz róla az utolsó hozzászólásban.</li>
+				</ul>
+			</div>
+		</div>`);
+	}
+}
+function show_version_news(){
+	$("#news_form").css({
+		"height": "300px",
+		"overflow": "scroll"
+	});
+	$(".removable_string").css("display", "none");
+	$("#news_container").css("display", "block");
+}
+function getting_storage_keys(){
+	if(localStorage.getItem("cutter_script_settings") != null){
+		storage_keys = JSON.parse(localStorage.getItem("cutter_script_settings"));
+		//version_check_and_compatibility();
+	}else{
+		set_default_storage_keys();
+		storage_keys = JSON.parse(localStorage.getItem("cutter_script_settings"));
+	}
+}
+function load_settings(){
+	$("#cuts_per_village").val(storage_keys.cuts_per_village);
+	if(storage_keys.launch_time_exceptions){
+		$("#launch_time_exceptions").prop("checked", true);
+		$("#launch_time_exceptions_min").prop("disabled", false);
+		$("#launch_time_exceptions_max").prop("disabled", false);
+	}
+}
+function ev_listeners(){
+	$(".open_forum").click(function(){
+		window.open("https://forum.klanhaboru.hu/index.php?threads/ronin-kl%C3%A1nszint%C5%B1-vonatv%C3%A1g%C3%A1s-tervez%C5%91.5304/");
+	});
+	$("#launch_time_exceptions_min").unbind('change');
+	$("#launch_time_exceptions_min").change(function(){
+		if($(this).val() == ""){
+			$(this).val("0");
+		}
+		if(parseInt($(this).val()) < 0){
+			$(this).val("0");
+		}
+		if(parseInt($(this).val()) > 23){
+			$(this).val("23");
+		}
+		storage_keys.launch_time_exceptions_min = parseInt($(this).val());
+		localStorage.setItem("cutter_script_settings", JSON.stringify(storage_keys));
+	});
+	$("#launch_time_exceptions_max").unbind('change');
+	$("#launch_time_exceptions_max").change(function(){
+		if($(this).val() == ""){
+			$(this).val("0");
+		}
+		if(parseInt($(this).val()) < 0){
+			$(this).val("0");
+		}
+		if(parseInt($(this).val()) > 23){
+			$(this).val("23");
+		}
+		storage_keys.launch_time_exceptions_max = parseInt($(this).val());
+		localStorage.setItem("cutter_script_settings", JSON.stringify(storage_keys));
+	});
+	$("#launch_time_exceptions").unbind('change');
+	$("#launch_time_exceptions").change(function(){
+		if($(this).prop("checked")){
+			storage_keys.launch_time_exceptions = true;
+			$("#launch_time_exceptions_min").prop("disabled", false);
+			$("#launch_time_exceptions_max").prop("disabled", false);
+		}else{
+			storage_keys.launch_time_exceptions = false;
+			$("#launch_time_exceptions_min").prop("disabled", true);
+			$("#launch_time_exceptions_max").prop("disabled", true);
+		}
+		localStorage.setItem("cutter_script_settings", JSON.stringify(storage_keys));
+	});
+	$("#cuts_per_village").unbind('change');
+	$("#cuts_per_village").change(function(){
+		if($(this).val() == ""){
+			$(this).val(1);
+		}
+		if(parseInt($(this).val()) < 1){
+			$(this).val(1);
+			storage_keys.cuts_per_village = 1;
+		}else{
+			storage_keys.cuts_per_village = parseInt($(this).val());
+		}
+		localStorage.setItem("cutter_script_settings", JSON.stringify(storage_keys));
+	});
+	$(".fix_units_input").unbind('change');
+	$(".fix_units_input").change(function(){
+		var indx = parseInt($(this).parent().attr("indx"));
+		var storage_index = storage_keys.samples.fix_units_index.indexOf(indx);
+		var unit = $(this).attr("unit");
+		console.log(indx);
+		console.log(storage_index);
+		console.log(unit);
+		if($(this).val() == "" || isNaN(parseInt($(this).val()))){
+			$(this).val(0);
+		}
+		if(parseInt($(this).val()) < 0){
+			$(this).val(0);
+			storage_keys.samples.fix_units[storage_index][unit] = 0;
+		}else{
+			storage_keys.samples.fix_units[storage_index][unit] = parseInt($(this).val());
+		}
+		localStorage.setItem("cutter_script_settings", JSON.stringify(storage_keys));
+	});
+}
+//*******
+function forum_pages_check(){
+	if($(".paged-nav-item").length > 0){
+		var current_page = $("#forum_box").find("strong:last").text().match(/\d+/);
+		forum_load_progress = parseInt(current_page[0]);
+	
+		var max_pages = $(".paged-nav-item:last").text().match(/\d+/);
+		max_pages = parseInt(max_pages[0]);
+	
+		all_pages = max_pages;
+	}
+	if(forum_load_progress >= all_pages){
+		$("#script_main_form").find("a").eq(1).remove();
+		$("#script_main_form").find("br").eq(4).remove();
+	}
+}
+
+function load_forum_pages(){
+	if(forum_load_progress >= all_pages){
+		$("#script_main_form").find("a").eq(1).remove();
+		$("#script_main_form").find("br").eq(4).remove();
+		setTimeout(allowed_players, 1000);
+		return;
+	}
+	
+	$("#loading_state").text((forum_load_progress + 1) + "/" + all_pages);
+	var link = "https://" + document.location.host + "/game.php?" + dep + "village=" + game_data.village.id + "&screen=forum&screenmode=view_thread&" + document.location.href.match(/thread_id=\d+/)[0] + "&" + document.location.href.match(/forum_id=\d+/)[0] + "&page=" + forum_load_progress;
+	
+	$.ajax({url: link, async: true, success: function(result){
+		for(var x = 0; x < $(result).find(".post[id!='ad_leaderboard']").length; x++){
+			$($(result).find(".post[id!='ad_leaderboard']").eq(x)).insertAfter(".post:last");
+		}
+	}});
+	forum_load_progress++;
+	setTimeout(load_forum_pages, 300);
+	
+}
+//----
+var counting = 1;
+function train_listing(){ // script_step_two,,,P_Mails/Forum
+	if(platform == "forum"){
+		// mass_accelerator chenger select box html
+		var acc_html = "";
+		$(".player_select").each(function(){
+			if($(this).prop("checked")){
+				acc_html += `<option value = "${$(this).attr("p_name")}">${$(this).attr("p_name")}</option>`;
+			}
+		});
+		$("#for_player_accelerator").html(acc_html);
+		//-----
+		$("#script_step_one").css("display", "none");
+		$("#script_step_two").css("display", "block");
+	}
+
+	
+	refresh_date_time();
+	//--------------------------------------------
+	var comments = $(".post[id!='ad_leaderboard']");
+	for(var a = 0; a < comments.length; a++){
+		var comments_txt = $(comments[a]).find(".text").eq(0).html().replace("arxtb", "");
+		var got_trains = comments_txt.split("<b>Falu:</b>"); // ARRAY || Target Village & Trains/array key
+		var player = $(comments[a]).find(player_search_selector).find("a");
+		var player_name = $(player).text().trim();
+		var post_date = $(player).siblings(".igmline-date").text().trim();
+		if(platform == "forum" && !$(`[p_name="${player_name}"]`).prop("checked")){
+			continue;
+		}
+		if(got_trains.length == 1){continue;}//the comment dont contains trains
+		//gyorsító kezelőfelület kezelése
+		try{
+			var accelerator = comments_txt.match(/[0-9 ]+%/)[0].trim();
+			accelerator = parseInt(accelerator);
+			if(player_accelerators[player_name] == undefined || player_accelerators[player_name] == "Nincs adat"){
+				player_accelerators[player_name] = accelerator;
+			}
+		}catch(ex){
+			if(player_accelerators[player_name] == undefined){
+				player_accelerators[player_name] = "Nincs adat";
+			}
+		}
+		//------------------------------------------------------------------------------------------------
+		
+		for(var s = 1/*0 should be empty*/; s < got_trains.length; s++){
+			if(got_trains[s].indexOf("Nem létezik") > -1){
+				//probl_post(type, post_auth, date, attacked_village_number, train_numb)
+				probl_post("bb_code_village_missing", player_name, post_date, s)
+				continue;
+			}
+			
+			var selector = document.createElement("div");
+			$(selector).append(got_trains[s]); //because from DOM objects easyer to get data then from text
+			//--------------------------------------------------------------------------------------------
+			var matched_villages = $(selector).find("a[href*='info_village']");//1st the target, everything else is attackers
+			var atck_imgs = $(selector).find("img[src*='command/attack']");
+			console.log($(selector).text());
+			var y = months.jan+months.febr+months.marc+months.apr+months.maj+months.jun+months.jul+months.aug+months.szept+months.okt+months.nov+months.dec;
+			var re = new RegExp('['+y+']+\\s\\d+,\\s\\d+\\s+\\d+:\\d+:\\d+:\\d+', 'g');
+			var arrivings = $(selector).text().match(re);
+			console.log(arrivings);
+			var target_coord = $(matched_villages[0]).text().match(/\d+\|\d+/)[0];
+			var target_id = $(matched_villages[0]).attr("href").match(/id=\d+/)[0].replace("id=", "");
+			var target_name = $(matched_villages[0]).text();
+			
+			target_ids.push(target_id);
+			//--------------------------------------------------------------------------------------------
+			var html = `<div style = "padding: 5px; margin-bottom: 5px; border: 1px solid #8c5f0d;">
+				<input class = "allow_cutting" type = "checkbox" checked>
+				<b>${counting}#</b>
+				<span class="icon header village"></span>
+				<a class = "target" href = "${$(matched_villages[0]).attr("href")}" this_target_id = "${target_id}" target_coord = "${target_coord}">${target_name}</a> ->
+				<span class="icon header profile"></span><a href = "${$(player).attr("href")}">${player_name}</a> -> 
+				Erősítés gyorsító: <select class = "accelerator" player = "${player_name}" style = "width: 100px;"></select>
+				<br><br>`;
+			var arriving_commands = 0;
+			// PREVIOUS CHECK	
+			try{
+			if(atck_imgs.length != arrivings.length || matched_villages.length - 1 != atck_imgs.length){
+				probl_post("unrekognized_problem", player_name, post_date, s);
+				arriving_commands = 0;
+				break;
+			}
+			}catch(ex){
+				
+			}
+			
+			for(var x = 1/*0 is the target*/; x < matched_villages.length; x++){// working with attackers data
+				//adatok beolvasása name
+				var attacker_name = $(matched_villages[x]).text();
+				var attacker_coord = attacker_name.match(/\d+\|\d+/g)[0];
+				var attack_arriving = get_arriving_time("train", arrivings[x - 1]);
+				console.log(attack_arriving);
+				if(isNaN(attack_arriving)){
+					//probl_post(type, post_auth, date, attacked_village_number, train_numb)
+					probl_post("invalid_arriving_time", player_name, post_date, s, x);
+					arriving_commands = 0;
+					break;
+				}
+				//csapódási idő túlhaladás illetve nemes tartalom ellenőrzése
+				if(date_time.getTime() > attack_arriving){continue;}// if the arriving already arriwed
+				if($(atck_imgs[x-1]).next().is("img")){
+					if($(atck_imgs[x-1]).next().attr("src").indexOf("snob") == -1){
+						if(!label_unit_is_noble(got_trains[s], x)){
+							continue; //kihagy mert a beérkező parancs nem nemes tartalmú( nincs nemeses cimke illetve torony érzékelés mentes is)
+						}
+					}
+				}else if(!label_unit_is_noble(got_trains[s], x)){
+					continue; //kihagy mert a beérkező parancs nem nemes tartalmú( nincs nemeses cimke illetve torony érzékelés mentes is)
+				}
+				//html kezelés
+				html += `<div>
+				<input class = "cut_at" name = "target_coord_${target_coord}_frm_${attacker_coord}" type = "radio" snob_no = "${x-1}" arriving = "${attack_arriving}" target_id = "${target_id}" target_coord = "${target_coord}">
+				<img src = "${$(atck_imgs[x-1]).attr("src")}">
+				<img src="https://dshu.innogamescdn.com/asset/1d2499b/graphic/command/snob.png"> `;
+				html+= `<a href = "${$(matched_villages[x]).attr("href")}">${attacker_name}</a> ${arrivings[x - 1]}<br>
+				</div>`;
+				arriving_commands++;
+			}
+			html += "</div>";
+			if(arriving_commands == 0){
+				exceptions.push(target_id);
+				continue;
+			}
+			$("#trains_list_container").append(html);
+			counting++;		
+		}
+		
+	}
+	//--
+	accelerator_auto_complite();
+	get_incom_supps();
+	create_loader();
+}
+function probl_post(type, post_auth, date, attacked_village_number, train_numb){ //train_listings
+	if(type == "invalid_arriving_time"){
+		$("#probl_post").append(`<br><label style = "color: red; font-weight: bold; font-size: 12px;">Figyelmeztetés! ${post_auth} játékos ${date} írott posztjában a(z) ${attacked_village_number} számú támadott falvánál, a(z) ${train_numb} számu érkező parancs érkezési ideje hibás formátumban van. A script ezt a falut nem fogja kilistázni, mert javítást igényel. Ha úgy véled hogy a script hibásan feltételezi ezt, akkor kérlek fordulj a script moderátorhoz hibabejelentésre hivatkozva és csatolj egy képet is az alábbi parancsnak az érkézési idejével.</label><br><br>`);
+	}else if(type == "bb_code_village_missing"){
+		$("#probl_post").append(`<br><label style = "color: red; font-weight: bold; font-size: 12px;">Figyelmeztetés! ${post_auth} játékos ${date} írott posztjában a(z) ${attacked_village_number} számú támadott falvánál a script "Nem létezik ilyen falu"-t érzékelt. A script ezt a falut nem fogja kilistázni, mert javítást igényel. Ha úgy véled hogy a script hibásan feltételezi ezt, akkor kérlek fordulj a script moderátorhoz hibabejelentésre hivatkozva és csatolj egy képet is az alábbi parancsról.</label><br><br>`);
+	}else if(type == "unrekognized_problem"){
+		$("#probl_post").append(`<br><label style = "color: red; font-weight: bold; font-size: 12px;">Figyelmeztetés! ${post_auth} játékos ${date} írott posztjában a(z) ${attacked_village_number} számú támadott falvánál a script hibát érzékelt. Hibás bb-kódódos falu, rossz érkezési idő formátum egy beérkező parancsnál, vagy egyéb manuális változtatás az egyik beérkező parancs sorjában amit a script nem tud kezelni. Ezt a falut a script nem olvassa be.</label><br><br>`);
+	}
+	UI.ErrorMessage("Hibás poszt! Részletek fent", 3000);
+}
+function load_word_config(){
+	var link = `https://${window.location.host}/interface.php?func=get_config`;
+	$.ajax({url: link, async: true, success: function(result){
+		word_speed = parseFloat($(result).find("speed").text());
+		word_unit_speed = parseFloat($(result).find("unit_speed").text());
+	}});
+	
+}-
+function incomming_train_listing(){ // script_step_two,,,Incommings page
+	refresh_date_time();
+	//--------------------------------------------
+	var checkeds = $("#incomings_table").find("[type='checkbox']:checked");
+	if(checkeds.length == 0){UI.ErrorMessage("Nem választottál ki egy parancsot sem amire tervezni kéne...", 4000);return;}
+	$("#script_step_one").css("display", "none");
+	$("#script_step_two").css("display", "block");
+	
+	for(var a = 0; a < checkeds.length; a++){
+		var player_name = game_data.player.name;
+		//------------------------------------------------------------------------------------------------
+		var target = $(checkeds[a]).parent().parent().children("td").eq(1).find("a[href*='screen=overview']");
+		var attacker = $(checkeds[a]).parent().parent().children().eq(2).find("a[href*='info_village']");
+		var attacker_name = $(attacker).text().trim();
+		var attacker_coord = attacker_name.match(/\d+\|\d+/g)[0];
+		var atck_img = $(checkeds[a]).parent().find("img[src*='command/attack']");
+		var arriving = get_arriving_time("vill_data_incom", $(checkeds[a]).parent().parent().children().eq(5).text());
+		var target_coord = $(target).text().match(/\d+\|\d+/)[0];
+		//--------------------------------------------------------------------------------------------
+		var html = `<div style = "padding: 5px; margin-bottom: 5px; border: 1px solid #8c5f0d;">
+			<input class = "allow_cutting" type = "checkbox" checked>
+			<b>${counting}#</b>
+			<span class="icon header village"></span>
+			<a class = "target" href = "${$(target).attr("href")}" target_coord = "${target_coord}">${$(target).text().trim()}</a> ->
+			<span class="icon header profile"></span><label style = "font-weight: bold;">${player_name}</label> -> 
+			Erősítés gyorsító: <select class = "accelerator" player = "${player_name}" style = "width: 100px;">${accelerator_listing()}</select>
+			<br><br>`;
+			//--
+			html += `<div>
+			<input class = "cut_at" name = "target_coord_${target_coord}_frm_${attacker_coord}" type = "radio" snob_no = "0" arriving = "${arriving}" target_coord = "${target_coord}">
+			<img src = "${$(atck_img[0]).attr("src")}">`;
+			html+= `<a href = "${$(attacker).attr("href")}">${attacker_name}</a> ${$(checkeds[a]).parent().parent().children().eq(5).text()}
+			</div></div>`;
+			$("#trains_list_container").append(html);
+			counting++;
+		
+	}
+	//--
+	$(".accelerator").children(`[value='${$("#my_accelerator").val()}']`).prop("selected", true);
+	$("#list_check_butts").css("display", "block");
+	$(`[snob_no='0']`).prop("checked", true);
+}
+function label_unit_is_noble(commands, command_index){
+	var splitted_commands = commands.split("command/attack");
+	var res = false;
+	if(splitted_commands[command_index].indexOf("FN") > -1 || splitted_commands[command_index].indexOf("Noble") > -1){
+		res = true;
+	}
+	return res;
+}
+function accelerator_auto_complite(){
+	$("[class='accelerator']").each(function(){
+		var player_name = $(this).attr("player");
+		var htmll = "";
+		for(var x = 0; x < 51; x++){
+			if( x < 10){
+				htmll+= `<option value = "0${x}">${x}%</option>`;
+			}else{
+				htmll+= `<option value = "${x}">${x}%</option>`;
+			}
+		}
+		if(player_accelerators[player_name] == "Nincs adat"){
+			htmll += `<option value = "0" selected>Nincs infó(0%)</option>`;
+		}else if(player_accelerators[player_name] < 10){
+			htmll = htmll.replace(`<option value = "0${player_accelerators[player_name]}">${player_accelerators[player_name]}%</option>`, `<option value = "0${player_accelerators[player_name]}" selected>${player_accelerators[player_name]}%</option>`);
+		}else{
+			htmll = htmll.replace(`<option value = "${player_accelerators[player_name]}">${player_accelerators[player_name]}%</option>`, `<option value = "${player_accelerators[player_name]}" selected>${player_accelerators[player_name]}%</option>`);
+		}
+		$(this).html(htmll);
+	});
+}
+function get_arriving_time(type,text){
+	try{
+		if(type == "train"){
+			// júl 26, 2020  15:03:48:643
+			var splitted_date = text.split(" ");
+			
+			var year = parseInt(splitted_date[2]), month = months_script_format[splitted_date[0]], day = parseInt(splitted_date[1].replace(",", ""));
+			
+			var splitted_time = splitted_date[4].split(":");
+			var hour = parseInt(splitted_time[0]), minute = parseInt(splitted_time[1]), second = parseInt(splitted_time[2]), ms = parseInt(splitted_time[3]);
+			
+			var date = new Date();
+			date.setDate(10);
+			date.setFullYear(year);date.setMonth(month);date.setDate(day);date.setHours(hour);date.setMinutes(minute);date.setSeconds(second);date.setMilliseconds(ms);
+			return date.getTime();
+		}else if(type == "vill_data_incom"){
+			var splitted_server_date = $("#serverDate").text().split("/");
+			var solitted_arriv_time = text.match(/\d+:\d+:\d+:\d+/)[0].split(":");
+			if(text.indexOf("ma ekkor:") > -1){
+				// ma ekkor: 11:00:00:000
+				var date = new Date();
+				date.setFullYear(parseInt(splitted_server_date[2]));date.setMonth(parseInt(splitted_server_date[1]) - 1);date.setDate(parseInt(splitted_server_date[0]));date.setHours(parseInt(solitted_arriv_time[0]));date.setMinutes(parseInt(solitted_arriv_time[1]));date.setSeconds(parseInt(solitted_arriv_time[2]));date.setMilliseconds(parseInt(solitted_arriv_time[3]));
+				return date.getTime();
+			}else if(text.indexOf("holnap ekkor:") > -1){
+				//holnap ekkor: 11:00:00:000
+				var date = new Date();
+				date.setFullYear(parseInt(splitted_server_date[2]));date.setMonth(parseInt(splitted_server_date[1]) - 1);date.setDate(parseInt(splitted_server_date[0]) + 1);date.setHours(parseInt(solitted_arriv_time[0]));date.setMinutes(parseInt(solitted_arriv_time[1]));date.setSeconds(parseInt(solitted_arriv_time[2]));date.setMilliseconds(parseInt(solitted_arriv_time[3]));
+				return date.getTime();
+			}else{
+				//30.07. napon 06:19:39:592 órakor
+				var date = new Date();
+				date.setDate(10);
+				var arriv_date_month = text.match(/\d+.\d+/)[0].split(".");
+				if(parseInt(splitted_server_date[1]) < parseInt(arriv_date_month[1])){date.setFullYear(parseInt(splitted_server_date[2]) + 1);}else{date.setFullYear(parseInt(splitted_server_date[2]));}
+				date.setMonth(parseInt(arriv_date_month[1]) - 1);date.setDate(parseInt(arriv_date_month[0]));date.setHours(parseInt(solitted_arriv_time[0]));date.setMinutes(parseInt(solitted_arriv_time[1]));date.setSeconds(parseInt(solitted_arriv_time[2]));date.setMilliseconds(parseInt(solitted_arriv_time[3]));
+				return date.getTime();
+			}
+		}
+	}catch(ex){
+		return NaN;
+	}
+}
+function refresh_date_time(){
+	var date = $("#serverDate").text().match(/\d+/g); //05/08/2020
+	var time = $("#serverTime").text().match(/\d+/g); //22:32:07
+	
+	date_time.setFullYear(parseInt(date[2]));date_time.setMonth(parseInt(date[1]) - 1);date_time.setDate(parseInt(date[0]));
+	date_time.setHours(parseInt(time[0]));date_time.setMinutes(parseInt(time[1]));date_time.setSeconds(parseInt(time[2]));
+}
+// SUPP_READING_PARTS
+var incom_supp_data_ids = [];
+function get_incom_supps(){
+	if(target_ids.length == 0){
+		incom_supp_data_completion();
+		return;
+	}
+	while(exceptions.indexOf(target_ids[0]) > -1){
+		target_ids.shift();
+		setTimeout(get_incom_supps, 5);
+		return;
+	};
+
+	$("#loading_state").text("1/2 Erősítések csekkolása " + target_ids.length);
+	var link = "https://" + document.location.host + "/game.php?" + dep + "village=" + game_data.village.id + "&screen=info_village&id=" + target_ids[0];
+	$.ajax({url: link, async: true, success: function(result){
+		var commands = $(result).find(".command-row");
+		for(var x = 0; x < commands.length; x++){
+			if($(commands[x]).find("[data-command-type]").attr("data-command-type") != "support"){continue;}
+			var data = {};
+			data["data_id"] = $(commands[x]).find("[data-id]").attr("data-id");
+			data["arriving"] = get_arriving_time("vill_data_incom", $(commands[x]).find("td").eq(1).text());
+			data["target_id"] = target_ids[0];
+			var from_player = $(commands[x]).find("td").eq(0).text().trim().split(": ");
+			if(from_player.length > 1){
+				data["from_player"] = from_player[0]
+			}else{
+				data["from_player"] = game_data.player.name
+			}
+			incom_supp_data_ids.push(data);
+		}
+		setTimeout(get_incom_supps, 200);
+		target_ids.shift();
+	}});
+}
+
+var progress = 0;
+function incom_supp_data_completion(){
+	if(progress == incom_supp_data_ids.length){
+		set_supportrows_into_script_html();
+		return;
+	}
+	$("#loading_state").text("2/2 Erősítések elemzése " + (progress + 1) + "/" + incom_supp_data_ids.length);
+	$.ajax({url: "https://" + document.location.host + "/game.php?" + dep + "village=" + game_data.village.id + "&screen=info_command&ajax=details&id=" + incom_supp_data_ids[progress].data_id, async: true, success: function(result){
+		if (result != '{"no_authorization":true}'){
+			var data = result;
+			var as_html = `<div style = "margin-left: 25px;"><img src="https://dshu.innogamescdn.com/asset/4b16a6f/graphic/command/support.png"> ${incom_supp_data_ids[progress].from_player} -> `;
+			for(var x = 0; x < game_data.units.length; x++){
+				if(game_data.units[x] == "militia" || game_data.units[x] == "snob"){continue;}
+				as_html+= `<img src="https://dshu.innogamescdn.com/asset/4b16a6f/graphic/unit/unit_${game_data.units[x]}.png">${data.units[game_data.units[x]].count} `;
+			}
+			as_html+= ` -> ${date_to_string(incom_supp_data_ids[progress].arriving)}</div>`;
+			incom_supp_data_ids[progress]["html"] = as_html;
+        }else{
+			var as_html = `<div style = "margin-left: 25px;"><img src="https://dshu.innogamescdn.com/asset/4b16a6f/graphic/command/support.png"> ${incom_supp_data_ids[progress].from_player} ---> ${date_to_string(incom_supp_data_ids[progress].arriving)}</div>`;
+			incom_supp_data_ids[progress]["html"] = as_html;
+		}
+		progress++;
+		setTimeout(incom_supp_data_completion, 200);
+	}})	
+}
+function date_to_string(date_in_time_format){
+	var date = new Date(date_in_time_format);
+	var to_ret = "";
+	to_ret+= date.getDate() + ".";
+	to_ret+= (date.getMonth() + 1) + ". ";
+	to_ret+= date.getHours() + ":";
+	to_ret+= date.getMinutes() + ":";
+	to_ret+= date.getSeconds() + ":";
+	to_ret+= date.getMilliseconds();
+	return to_ret;
+}
+function set_supportrows_into_script_html(){
+	for(var x = 0; x < incom_supp_data_ids.length; x++){
+		var attacks = $(`[target_id='${incom_supp_data_ids[x].target_id}']`);
+		for(var y = attacks.length - 1; y > -1; y--){
+			var att_arriving = parseInt($(attacks[y]).attr("arriving"));
+			var supp_arriving = incom_supp_data_ids[x].arriving;
+			if(att_arriving < supp_arriving){
+				$(incom_supp_data_ids[x].html).insertAfter($(attacks[y]).parent());
+				break;
+			}else if(y == 0){
+				$(incom_supp_data_ids[x].html).insertBefore($(attacks[y]).parent());
+				break;
+			}
+		}
+	}
+	$("#list_check_butts").css("display", "block");
+	$(`[snob_no='1']`).prop("checked", true);
+	$("#loader").remove();
+}
+function select_train_snob(){
+	var x = $("#snob_check").val();
+	$(`[snob_no='${x}']`).prop("checked", true);
+}
+function select_villages(){
+	$(".allow_cutting").prop("checked", true);
+}
+function deselect_villages(){
+	$(".allow_cutting").prop("checked", false);
+}
+function get_village_groups(){
+	var groups_html = "";
+	$.ajax({url: "https://" + document.location.host + "/game.php?" + dep + "village=" + game_data.village.id + "&screen=overview_villages&mode=prod", async: false, success: function(result){
+		var groups = $(result).find(".group-menu-item");
+		for(var x = 0; x < groups.length; x++){
+			var group_id = $(groups[x]).attr("data-group-id");
+			if(parseInt(group_id) == 0){
+				groups_html+= `<option value = "0" selected>Összes</option>`;
+			}else{
+				groups_html+= `<option value = "${group_id}">${$(groups[x]).text().replace(/[\[\]]/g, "")}</option>`;
+			}
+			
+		}
+	}})	
+	return groups_html;
+}
+function third_step(){
+	if($(".allow_cutting:checked").length == 0){
+		UI.ErrorMessage("Legalább 1db vágandó falut válassz ki", 3000);
+		return;
+	}
+	
+	$("#script_step_three").css("display", "block");
+	$("#script_step_two").css("display", "none");
+}
+function allowed_players(type){
+	var allowed_players_for_cut = [];
+	if(type == "first_step"){
+		var options_html = "<div id = 'selected_players'>";
+		$(".post[id!='ad_leaderboard']").each(function(){
+			var player_name = $(this).children(".igmline").find("a").eq(0).text().trim();
+			if(allowed_players_for_cut.indexOf(player_name) == -1){
+				options_html += `<div class = "block_beauty" style = "display: inline-block;"><input class = "player_select" p_name = "${player_name}" type = "checkbox" checked>${player_name}</div>`;
+				allowed_players_for_cut.push(player_name);
+			}
+		});
+		options_html+= "</div>";
+		return options_html;
+	}else{
+		$("#selected_players").html("");
+		
+		var options_html = "<div id = 'selected_players'>";
+		$(".post[id!='ad_leaderboard']").each(function(){
+			var player_name = $(this).children(".igmline").find("a").eq(0).text().trim();
+			if(allowed_players_for_cut.indexOf(player_name) == -1){
+				options_html += `<div class = "block_beauty" style = "display: inline-block;"><input class = "player_select" p_name = "${player_name}" type = "checkbox" checked>${player_name}</div>`;
+				allowed_players_for_cut.push(player_name);
+			}
+		});
+		options_html+= "</div>";
+		$("#selected_players").html(options_html);
+		$("#loader").remove();
+	}
+}
+function accelerator_listing(){
+	var htmll = "<option value = '0'>0%</option>";
+	for(var x = 1; x < 51; x++){
+			if( x < 10){
+				htmll+= `<option value = "0${x}">${x}%</option>`;
+			}else{
+				htmll+= `<option value = "${x}">${x}%</option>`;
+			}
+	}
+	return htmll;
+}
+function select_accelerators_for(){
+	var p_name = $("#for_player_accelerator").val();
+	var acce = $("#slected_accelerator").val();
+	$(`.accelerator[player='${p_name}']`).find(`option[value='${acce}']`).prop("selected", true);
+}
+// SAMPLE_PARTS
+function remove_sample(index){
+	var storage_index = storage_keys.samples["fix_units_index"].indexOf(parseInt(index));
+	//storage_keys.check_vals.splice(index, 1);
+	storage_keys.samples["fix_units"].splice(storage_index, 1)
+	storage_keys.samples["fix_units_index"].splice(storage_index, 1);
+	localStorage.setItem("cutter_script_settings", JSON.stringify(storage_keys));
+	
+	$(`#fix_units_samples`).html("");
+	$(`#fix_units_samples`).html(load_samples());
+	ev_listeners();
+}
+function add_new_sample(){
+	var next_index;
+	for(var x = 0; x < storage_keys.samples["fix_units_index"].length + 1; x++){
+		if(storage_keys.samples["fix_units_index"].indexOf(x) == -1){
+			next_index = x;
+			break;
+		}
+	}
+	//---
+
+	var default_fix_units_sample = {"index": next_index};
+	for(var x = 0; x < game_data.units.length; x++){
+		if(game_data.units[x] == "militia" || game_data.units[x] == "snob" || game_data.units[x] == "spy"){continue;}
+		if(game_data.units[x] == "spear"){
+			default_fix_units_sample["spear"] = 2000;
+			continue;
+		}
+		if(game_data.units[x] == "heavy"){
+			default_fix_units_sample["heavy"] = 400;
+			continue;
+		}
+		default_fix_units_sample[game_data.units[x]] = 0;
+	}
+	storage_keys.samples.fix_units_index.push(next_index);
+	storage_keys.samples["fix_units"].push(default_fix_units_sample);
+	//html refresh
+	$("#fix_units_samples").html(load_samples());
+	
+	localStorage.setItem("cutter_script_settings", JSON.stringify(storage_keys));
+	//ev_listeners refresh
+	ev_listeners();
+}
+function load_samples(container){
+	function fix_units(){
+		var html = "";
+		for(var x = 0; x < storage_keys.samples.fix_units.length; x++){
+			html += `<div id = "fix_units_sample_${storage_keys.samples.fix_units[x].index}" indx = "${storage_keys.samples.fix_units[x].index}" class = "sample_container fix_sabs"><label style = "font-weight: bold; margin-right: 4px;">#${x+1}.</label>`;
+			for(var y = 0; y < game_data.units.length; y++){
+				if(game_data.units[y] == "militia" || game_data.units[y] == "snob" || game_data.units[y] == "spy"){continue;}
+				html += `<img src="https://dshu.innogamescdn.com/asset/1d2499b/graphic/unit/unit_${game_data.units[y]}.png">
+				<input class = "fix_units_input" type = "text" unit = "${game_data.units[y]}" value = "${storage_keys.samples.fix_units[x][game_data.units[y]]}" style = "width: 30px; margin-right: 4px">`;
+			}
+			html+= ` <a href="javascript:;" onclick = "remove_sample('${storage_keys.samples.fix_units[x].index}')">» Törlés</a></div>`;
+		}
+		return html + `<a href="javascript:;" onclick = "add_new_sample()">» Új sablon hozzáadása</a>`;
+	}
+	
+
+	if(storage_keys.samples.fix_units.length == 0){
+		var default_fix_units_sample = {"index": 0};
+		for(var x = 0; x < game_data.units.length; x++){
+			if(game_data.units[x] == "militia" || game_data.units[x] == "snob" || game_data.units[x] == "spy"){continue;}
+			if(game_data.units[x] == "spear"){
+				default_fix_units_sample["spear"] = 2000;
+				continue;
+			}
+			if(game_data.units[x] == "heavy"){
+				default_fix_units_sample["heavy"] = 400;
+				continue;
+			}
+			default_fix_units_sample[game_data.units[x]] = 0;
+		}
+		storage_keys.samples.fix_units_index.push(0);
+		storage_keys.samples["fix_units"].push(default_fix_units_sample);
+		localStorage.setItem("cutter_script_settings", JSON.stringify(storage_keys));
+	}
+	var html = fix_units();
+	return html;
+}
+//------CALCULATING PARTS------------
+function get_usable_villages_for_cut(){
+	available_units = [];
+	
+	var link = "https://" + document.location.host + "/game.php?" + dep + "village=" + game_data.village.id + "&screen=overview_villages&mode=units&type=own_home&group=" + $("#selected_village_group").val() + "&page=-1&type=own_home";
+	// AJAX request to determinate which villages could be used
+	$.ajax({url: link, async: false, success: function(result){
+		var rows = $(result).find("#units_table").find("tbody");
+		for(var x = 0; x < rows.length; x++){
+			var coord = $(rows[x]).find("td").eq(0).text().match(/\d+\|\d+/)[0].match(/\d+/g);
+			var village_data = {"coord": coord[0] + "|" + coord[1],
+								"coord_x": parseInt(coord[0]),
+								"coord_y": parseInt(coord[1])};
+			for(var y = 0; y < game_data.units.length; y++){
+				if(game_data.units[y] == "militia" || game_data.units[y] == "snob" || game_data.units[y] == "spy"){continue;}
+				var unit_name = game_data.units[y];
+				var unit_count = parseInt($(rows[x]).find("td").eq(y+2).text());
+				village_data[unit_name] = unit_count;
+			}
+			village_data["usable_samples"] = get_usable_samples_for_village(new Object(village_data));
+			if(village_data.usable_samples.length != 0){
+				available_units.push(village_data);
+			}
+		}
+	}});
+}
+function get_usable_samples_for_village(data){
+	var units = Object.create(data);
+	var usable_smps = [];
+	for(var x = 0; x < samples.length; x++){
+		//--
+			var new_units = Object.create(units);
+			var usable = true;
+			for(var y = 0; y < game_data.units.length; y++){
+				//--
+				if(game_data.units[y] == "militia" || game_data.units[y] == "snob" || game_data.units[y] == "spy"){continue;}
+				if(samples[x][game_data.units[y]] == undefined){continue;}
+				if(new_units[game_data.units[y]] - samples[x][game_data.units[y]] > -1){
+					new_units[game_data.units[y]] = new_units[game_data.units[y]] - samples[x][game_data.units[y]];
+				}else{
+					usable = false;
+					break;
+				}
+				//--
+			}
+			if(!usable){continue;}
+			usable_smps.push(x);
+			x--;
+			units = new_units;
+		//--
+	}
+	return usable_smps;
+}
+
+function read_commands_for_cut(){
+	trains = [];
+	
+	var cuttable_commands = $(".cut_at:checked");
+	for(var x = 0; x < cuttable_commands.length; x++){
+		if(!$(cuttable_commands[x]).parent().siblings(".allow_cutting").prop("checked")){continue;}
+		var acc = $(cuttable_commands[x]).parent().siblings(".accelerator").val();
+		acc = "0." + acc;
+		
+		var cutting_data = {};
+		cutting_data["coord"] = $(cuttable_commands[x]).attr("target_coord");
+		cutting_data["coord_x"] = parseInt($(cuttable_commands[x]).attr("target_coord").match(/\d+/g)[0]);
+		cutting_data["coord_y"] = parseInt($(cuttable_commands[x]).attr("target_coord").match(/\d+/g)[1]);
+		cutting_data["arriving"] = parseInt($(cuttable_commands[x]).attr("arriving"));
+		cutting_data["arriving_in_txt"] = $(cuttable_commands[x]).parent().text().trim();
+		cutting_data["accelerator"] = parseFloat(acc);
+		cutting_data["needed_cuts"] = parseInt($("#cuts_per_village").val());
+		trains.push(cutting_data);
+	}
+}
+function get_slowest_unit_speed(object){
+	if(object.catapult != undefined || object.ram != undefined){
+		return unit_speeds.ram;
+	}else if(object.sword != undefined){
+		return unit_speeds.sword;
+	}else if(object.spear != undefined || object.archer != undefined || object.axe != undefined){
+		return unit_speeds.spear;
+	}else if(object.heavy != undefined){
+		return unit_speeds.heavy;
+	}else if(object.knigth != undefined || object.light != undefined || object.marcher != undefined){
+		return unit_speeds.light;
+	}
+}
+
+function step_back(){
+	$("#script_step_three").css("display", "none");
+	$("#script_step_two").css("display", "block");
+}
+function prepare_samples(){
+	samples = [];
+	var all_samples = $(".fix_sabs");
+	for(var x = 0; x < all_samples.length; x++){
+		var sample_data = {};
+		for(var y = 0; y < game_data.units.length; y++){
+			if(game_data.units[y] == "militia" || game_data.units[y] == "snob" || game_data.units[y] == "spy"){continue;}
+			var unit_count = parseInt($(all_samples[x]).find(`[unit='${game_data.units[y]}']`).val());
+			if(unit_count == 0){continue;}
+			sample_data[game_data.units[y]] = unit_count;
+		}
+		sample_data["slowest"] = get_slowest_unit_speed(sample_data);
+		samples.push(sample_data);
+	}
+}
+function sort_cutter_villages(){
+	// Megvizsgáljuk az összes vágó falvanktól az átlag távolságot a célpont falvakhoz, és az átlagtávolság legmagassabbjától a legkissebbiig rendezzük a vágó falvakat
+	available_units.sort(function(a, b){
+		var distances_sum_a = 0;
+		var distances_count_a = 0;
+		var average_a; //later
+		var coord_x_a = a.coord_x;
+		var coord_y_a = a.coord_y;
+		
+		var distances_sum_b = 0;
+		var distances_count_b = 0;
+		var average_b;
+		var coord_x_b = b.coord_x;
+		var coord_y_b = b.coord_y;
+		
+		for(var x = 0; x < trains.length; x++){
+			distances_sum_a += Math.sqrt(Math.pow(coord_x_a - trains[x].coord_x, 2) + Math.pow(coord_y_a - trains[x].coord_y, 2));
+			distances_count_a++;
+		}
+		average_a = distances_sum_a / distances_count_a;
+		
+		for(var x = 0; x < trains.length; x++){
+			distances_sum_b += Math.sqrt(Math.pow(coord_x_b - trains[x].coord_x, 2) + Math.pow(coord_y_b - trains[x].coord_y, 2));
+			distances_count_b++;
+		}
+		average_b = distances_sum_b / distances_count_b;
+
+		return average_b - average_a;
+		}); 
+}
+function sort_trains(cutter_index){
+	trains.sort(function(a, b){
+		var distances_a = Math.sqrt(Math.pow(a.coord_x - available_units[cutter_index].coord_x, 2) + Math.pow(a.coord_y - available_units[cutter_index].coord_y, 2));
+		var distances_b = Math.sqrt(Math.pow(b.coord_x - available_units[cutter_index].coord_x, 2) + Math.pow(b.coord_y - available_units[cutter_index].coord_y, 2));
+		
+		return distances_b - distances_a;
+		}); 
+}
+function remove_unusable_villages_from_array(){
+	for(var x = available_units.length - 1; x != -1; x--){
+		if(available_units[x].usable_samples.length == 0){
+			available_units.splice(x, 1);
+			a_u_s = 0;
+			a_u = 0;
+		}
+	}
+}
+function launch_time_is_ok(launch_t){
+	var l_t = new Date(launch_t);
+	l_t.setMinutes(l_t.getMinutes() - 4);
+	
+	if(l_t < date_time){
+		//console.log(l_t.getTime() + "<" + date_time.getTime() + " , so skip");
+		return false;
+	}
+	if(!storage_keys.launch_time_exceptions){
+		return true;
+	}
+	var cut_h_min = storage_keys.launch_time_exceptions_min; // 2 - 8
+	var cut_h_max = storage_keys.launch_time_exceptions_max; //23 - 8
+	if(cut_h_min < cut_h_max){
+		if(l_t.getHours() > cut_h_min && l_t.getHours() < cut_h_max){
+			return false;
+		}else{
+			return true;
+		}
+	}else if(cut_h_min > cut_h_max){
+		if(l_t.getHours() < cut_h_max && l_t.getHours() < cut_h_min){
+			return false;
+		}else{
+			return true;
+		}		
+	}else{
+		return true;
+	}
+}
+var a_u = 0;
+var a_u_s = 0;
+function calculate_launches(){
+	
+	if(available_units.length == 0 && trains.length != 0){
+		calc_undone_projects_left();
+		sort_launch_times();
+		generate_table_text();
+		generate_stat();
+		return;
+	}
+	if(available_units.length == 0 || trains.length == 0){
+		sort_launch_times();
+		generate_table_text();
+		generate_stat();
+		return;
+	}
+	
+	remove_unusable_villages_from_array();
+	
+	if(available_units.length -1 < a_u){
+		for_stat.undone_projects += trains[0].needed_cuts;
+		trains.shift();
+		a_u = 0;
+		a_u_s = 0;
+		setTimeout(calculate_launches, 10);
+		return;
+	}
+	if(available_units[a_u].usable_samples.length - 1 >= a_u_s){
+		//**
+		var cut_time = new Date(trains[0].arriving);
+		var distance = Math.sqrt(Math.pow(available_units[a_u].coord_x - trains[0].coord_x, 2) + Math.pow(available_units[a_u].coord_y - trains[0].coord_y, 2));
+		var slowest_speed = samples[available_units[a_u].usable_samples[a_u_s]].slowest;
+		// var travel_time = (slowest_speed - (slowest_speed * trains[0].accelerator)) * distance * 60 * 1000; //millisec
+		var travel_time = (slowest_speed / word_speed / (word_unit_speed + (word_unit_speed * trains[0].accelerator))) * distance * 60 * 1000;
+		
+		var launch_time = new Date(cut_time.getTime() - travel_time);
+		if(available_units[a_u].coord == trains[0].coord){ // same coord - next
+			a_u++;
+			a_u_s = 0;
+			setTimeout(calculate_launches, 20);
+			return;
+		}
+		if(launch_time_is_ok(launch_time.getTime())){ // launch time is ok
+			launches.push({"from": available_units[a_u].coord,
+							"to": trains[0].coord,
+							"arriving": trains[0].arriving,
+							"launch": launch_time.getTime(),
+							"sample": available_units[a_u].usable_samples[a_u_s]});
+			available_units[a_u].usable_samples.splice(a_u_s, 1);
+			trains[0].needed_cuts--;
+			if(trains[0].needed_cuts == 0){
+				trains.shift();
+				sort_trains(0);
+				a_u = 0;
+				a_u_s = 0;
+				setTimeout(calculate_launches, 20);
+				return;
+			}else{
+				a_u_s = 0;
+				a_u++;
+				setTimeout(calculate_launches, 20);
+				return;
+			}
+		}else{
+			a_u_s++;
+			setTimeout(calculate_launches, 20);
+			return;
+		}
+		//**
+	}else{
+		a_u++;
+		a_u_s = 0;
+		setTimeout(calculate_launches, 10);
+		return;
+	}
+	
+	
+}
+function sort_launch_times(){
+	launches.sort(function(a, b){
+		return a.launch - b.launch;
+		}); 
+}
+function table_arriving_formatting(date_t){
+	var date = new Date(date_t);
+	var month = (date.getMonth() + 1).toString(),
+	datee = date.getDate().toString(),
+	hour = date.getHours().toString(),
+	minute = date.getMinutes().toString(),
+	sec = date.getSeconds().toString();
+	msec = date.getMilliseconds().toString();
+	if(month.length == 1){month = "0" + month;}
+	if(datee.length == 1){datee = "0" + datee;}
+	if(hour.length == 1){hour = "0" + hour;}
+	if(minute.length == 1){minute = "0" + minute;}
+	if(sec.length == 1){sec = "0" + sec;}
+	if(msec.length == 1){msec = "00" + msec;}
+	if(msec.length == 2){msec = "0" + msec;}
+	
+	var for_ret = date.getFullYear() + "-" + month + "-" + datee + "\n" + hour + ":" + minute + ":" + sec + ":" + msec;
+	return for_ret;
+}
+function table_launching_formatting(date_t){
+	var date = new Date(date_t);
+	var month = (date.getMonth() + 1).toString(),
+	datee = date.getDate().toString(),
+	hour = date.getHours().toString(),
+	minute = date.getMinutes().toString(),
+	sec = date.getSeconds().toString(),
+	msec = date.getMilliseconds().toString();
+	if(month.length == 1){month = "0" + month;}
+	if(datee.length == 1){datee = "0" + datee;}
+	if(hour.length == 1){hour = "0" + hour;}
+	if(minute.length == 1){minute = "0" + minute;}
+	if(sec.length == 1){sec = "0" + sec;}
+	if(msec.length == 1){msec = "00" + msec;}
+	if(msec.length == 2){msec = "0" + msec;}
+	
+	var for_ret = date.getFullYear() + "-" + month + "-" + datee + "\n" + hour + ":" + minute + ":" + sec + ":" + msec;
+	return for_ret;
+}
+function table_formatted_sample_units(sample_index){
+	var text = "";
+	for(var x = 0; x < game_data.units.length; x++){
+		if(samples[sample_index][game_data.units[x]] == undefined){continue;}
+		text += `[unit]${game_data.units[x]}[/unit]${samples[sample_index][game_data.units[x]]} `;
+	}
+	text = text.trim();
+	return text;
+}
+function copy_table_text(whc){
+	var textArea = document.getElementById("table" + whc);
+	/*Szöveg kim.*/
+	textArea.select();
+	textArea.setSelectionRange(0, 99999); //telókra
+	document.execCommand("copy");
+	UI.SuccessMessage("Adatok kimásolva!", 2000);
+}
+function generate_table_text(){
+	$(".tbl_comp").remove();
+	
+	var needed_tables = Math.ceil(launches.length / 30);
+	var counting = 0;
+	for(var y = 0; y < needed_tables; y++){
+		var html = "[table][**][||]Innen[||]Ide[||]Egységek[||]Csapódás[||]Indítás[/**]";
+		for(var x = 0; x < 30 && counting < launches.length; x++){
+			html += `[*][b]#${counting + 1}[/b][|][coord]${launches[counting].from}[/coord][|][coord]${launches[counting].to}[/coord][|]${table_formatted_sample_units(launches[counting].sample)}[|]${table_arriving_formatting(launches[counting].arriving)}[|][b]${table_launching_formatting(launches[counting].launch)}[/b]`;
+			counting++;
+		}
+		html += "[/table]";
+		$("#sc_tables").append(`<br class="tbl_comp">
+		<textarea id = "table${y}" class = "textarea tbl_comp" rows="10" cols="100" style = "border-radius: 5px;">${html}</textarea>
+		<br class = "tbl_comp">
+		<input class = "btn tbl_comp" type = "button" value = "Kimásolás" onclick = "copy_table_text(${y});">
+		<br class = "tbl_comp"><br class = "tbl_comp">
+		`);
+	}
+	UI.SuccessMessage("Kész", 3000);
+}
+function calculating(){
+	UI.InfoMessage("Pillanat...", 15000);
+	launches = [];
+	read_commands_for_cut();
+	prepare_samples();
+	get_usable_villages_for_cut(); // használható védők beolvasása, azokhoz az elérhető sablonok elemzése és nyílvántartásának létrehozása
+	sort_cutter_villages();
+	refresh_date_time();
+	//---
+	for_stat = {"targets_count": get_cuttables_count(),
+				"needed_projects_count": get_cuttables_count() * storage_keys.cuts_per_village,
+				"cutter_villages_count": available_units.length,
+				"available_cuts": get_available_cuts(),
+				"undone_projects": 0};
+	//---
+	calculate_launches();
+}
+function generate_stat(){
+	$("#script_stat").css("display", "block");
+	$("#targets_count").text(for_stat.targets_count);
+	$("#needed_projects_count").text(for_stat.needed_projects_count);
+	$("#cutter_villages_count").text(for_stat.cutter_villages_count);
+	$("#available_cuts").text(for_stat.available_cuts);
+	//---
+	if(for_stat.undone_projects == 0){
+		$("#stat_check_status").css("color", "green");
+		$("#stat_check_status").text("Kész. Minden vonatra sikerült elegendő tervezetet létrehozni");
+	}else{
+		$("#stat_check_status").css("color", "red");
+		var err_text = `A szükséges ${for_stat.needed_projects_count}db vágási tervezetből ${for_stat.undone_projects}db tervezetet nem sikerült leszervezni.`;
+		if(for_stat.needed_projects_count > for_stat.available_cuts){
+			err_text+= " Sikeres eredményt nem fogsz elérni mert több a vágandó vonat mint az elérhető vágó egységeid mennyisége."
+		}
+		if(storage_keys.launch_time_exceptions){
+			err_text+= " Az indítási időközök korlátozásának a csökkentésével sikeresebb eredményt érhetsz el."
+		}
+		err_text+= " További kombinált egységsablonok megadásával vagy egy bővebb vágó faluscoportodra való váltással növelheted az elvégezhető vágási számokat."
+		$("#stat_check_status").text(err_text);
+	}
+}
+function get_cuttables_count(){
+	var count = 0;
+	$(".cut_at:checked").each(function(){
+		if($(this).parent().siblings(".allow_cutting").eq(0).prop("checked")){
+			count++;
+		}
+	})
+	return count;
+}
+function get_available_cuts(){
+	var x = 0;
+	for(var y = 0; y < available_units.length; y++){
+		x+= available_units[y].usable_samples.length;
+	}
+	return x;
+}
+function calc_undone_projects_left(){
+	for(var x = 0; x < trains.length; x++){
+		for_stat.undone_projects += trains[x].needed_cuts;
+	}
+}
+// -----MEMO----
+function memo_assistant(){
+			$("#content_value").prepend(`<div class = "content-border" style = "margin-bottom: 10px; padding: 5px;">
+			<label style = "color: #603000;"><b>A még indítandó parancsok száma: </b></label><b><span id = "launches" style = "color: #603000;">0</span></b><br>
+			<label style = "color: #603000;"><b>Válassz hangjelzést: </b></label>
+			<select id = "choosed_sound" size = "1" style = "width: 100px; border-radius: 4px;">
+				<option value="snd1.mp3">Sound 1</option>
+				<option value="snd2.mp3">Sound 2</option>
+				<option value="snd3.mp3">Sound 3</option>
+				<option value="snd4.mp3">Sound 4</option>
+				<option value="snd5.mp3">Sound 5</option>
+			</select>
+			<input id = "testSound" class = "butt" type = "button" value = "Teszt"><br>
+			<input id = "notif_time" type = "number" value = "5" style = "width: 30px; border-radius: 4px; margin-bottom: 5px;">
+			<label for = "notif_time" style = "color: #603000;"> <b>- percel indítás előtt jelezzen</b></label><br>
+			<input id = "notif_during" type = "number" value = "40" style = "width: 30px; border-radius: 4px;">
+			<label for = "notif_during" style = "color: #603000;"> <b>- másodpercen keresztül jelezzen majd kapcsoljon ki (ha nem kapcsolod le manuálisan)</b></label><br>
+			<label class = "wrong_commands" style = "color: red;" hidden><b>Figyelem! Hibás parancsok lettek észlelve a táblázatban! Ezeket a parancsokat a script figyelmen kívül fogja hagyni</b></label><br>
+			<input id = "setit" class = "butt" type = "button" value = "Élesítés">
+			<input id = "stop_play" class = "stopbutt" type = "button" value = "Elhallgattat" hidden>
+			<audio id = "audioo" src="https://indexrprogs.netlify.com/snd1.mp3"></audio>
+			<style>.butt{margin: 5px;backface-visibility: hidden;position: relative;cursor: pointer;white-space: nowrap;background: #6c4824;border-radius: 4px;border: 1px solid #000000;border-width: 1px 1px 1px 1px;padding: 1px 5px 1px 5px;box-shadow: 0px 0px 5px #6c4824,inset 0px 3px 5px lime;color: #ffffff;font-size: 12px;font-family: verdana;font-weight: 500;font-style: normal;text-shadow: 0px -1px 0px rgba(0%,0%,0%,0.4);}.butt:hover {background-color:#68e431;}.butt:active{position:relative;top:1px;}.stopbutt{margin: 5px;backface-visibility: hidden;position: relative;cursor: pointer;white-space: nowrap;background: #6c4824;border-radius: 4px;border: 1px solid #000000;border-width: 1px 1px 1px 1px;padding: 1px 5px 1px 5px;box-shadow: 0px 0px 5px #6c4824,inset 0px 3px 5px yellow;color: #ffffff;font-size: 12px;font-family: verdana;font-weight: 500;font-style: normal;text-shadow: 0px -1px 0px rgba(0%,0%,0%,0.4);}.stopbutt:hover {background-color:yellow;}.stopbutt:active{position:relative;top:1px;}</style>
+		</div>`);
+		//indítások beolvasása és az eltérések figyelembe vétele
+		var game_time = new Date();
+				game_time.setFullYear(parseInt($("#serverDate").text().match(/\d+/g)[2]));
+				game_time.setMonth(parseInt($("#serverDate").text().match(/\d+/g)[1]) - 1);
+				game_time.setDate(parseInt($("#serverDate").text().match(/\d+/g)[0]));
+				game_time.setHours(parseInt($("#serverTime").text().match(/\d+/g)[0]));
+				game_time.setMinutes(parseInt($("#serverTime").text().match(/\d+/g)[1]));
+				game_time.setSeconds(parseInt($("#serverTime").text().match(/\d+/g)[2]));
+				if(game_time > new Date()){
+					var dif_date = new Date(game_time - new Date());
+					difference = dif_date.getTime();
+					gameTimeIsMore = true;
+				}else{
+					var dif_date = new Date(new Date() - game_time);
+					difference = dif_date.getTime();
+					gameTimeIsMore = false;
+				}
+			
+		var tables = $(".bbcodetable");
+		for(var y = 0; y < tables.length; y++){
+			//ellenőrzés hogy a táblázat a script által generált-e
+			if($(".bbcodetable").eq(y).find("tr").eq(0).find("th").length != 6 && $(".bbcodetable").eq(y).find("tr").eq(0).text().indexOf("Egységek") < 0){
+				continue;
+			}
+			
+			var rows = $(tables[y]).find("tr");
+			
+			for(var x = 1; x < rows.length; x++){
+				//gyorsgomb létrehozása a gyülekezőhelyhez
+				var from = $(rows[x]).find("td").eq(1).find("a").eq(0).attr("href").match(/id=\d+/)[0].replace("id=", "");
+				var to = $(rows[x]).find("td").eq(2).find("a").eq(0).attr("href").match(/id=\d+/)[0].replace("id=", "");
+				//ha a cp kordi nem létezik
+				if(to == undefined){
+					$(".wrong_commands").prop("hidden", false);
+					$(rows[x]).find("td").eq(2).attr("style", "background: orangered;");
+					$(rows[x]).find("td").eq(4).attr("style", "background: orangered;");
+					$(rows[x]).find("td").eq(5).attr("style", "background: orangered;");
+					continue;
+				}			
+				var row_number = $(rows[x]).find("b").eq(0).text().match(/\d+/)[0];
+				var colum = $(rows[x]).find("td").eq(0);
+				var sandb_unts_container = $(rows[x]).find("td").eq(3);
+				
+				$(colum).html(`<a class="quick_open" title="${get_sendable_units_link_format(sandb_unts_container, from, to)}" href="javascript:;"><img src="https://dshu.innogamescdn.com/asset/bf21430/graphic//buildings/place.png">#${row_number}</a>`);
+				
+				
+				//a még indítandók kiszűrése és az indítottak zöldelése
+				var launch = $(tables[y]).find("tr").eq(x).find("td").eq(5).text();
+				var llaunch_time = new Date();
+				llaunch_time.setFullYear(parseInt(launch.match(/\d+/g)[0]));
+				llaunch_time.setMonth(parseInt(launch.match(/\d+/g)[1]) - 1);
+				llaunch_time.setDate(parseInt(launch.match(/\d+/g)[2]));
+				llaunch_time.setHours(parseInt(launch.match(/\d+/g)[3]));
+				llaunch_time.setMinutes(parseInt(launch.match(/\d+/g)[4]));
+				llaunch_time.setSeconds(parseInt(launch.match(/\d+/g)[5]));
+				var time_now = new Date();
+				if(gameTimeIsMore){
+					time_now.setMilliseconds(time_now.getMilliseconds() + difference);
+					if(llaunch_time > time_now){
+						calculations.push({launch:llaunch_time.getTime(), table: y, row: x});
+					}else{
+						$(tables[y]).find("tr").eq(x).find("td").eq(5).attr("style", "background: lime;");
+					}
+				}else{
+					time_now.setMilliseconds(time_now.getMilliseconds() - difference);
+					if(llaunch_time > time_now){
+						calculations.push({launch:llaunch_time.getTime(), table: y, row: x});
+					}else{
+						$(tables[y]).find("tr").eq(x).find("td").eq(5).attr("style", "background: lime;");
+					}
+				}
+				
+			}
+		}
+		$("#launches").text(calculations.length);
+		//$(".image_place").attr("style", "background-image: url(https://dshu.innogamescdn.com/asset/bf21430/graphic//buildings/place.png);");
+		
+		$("a.quick_open").click(function(){
+			window.open("https://" + document.location.host + $(this).attr("title"));
+		});
+		$("#testSound").click(function(){
+			document.getElementById("audioo").play();
+		});
+		$("#choosed_sound").change(function(){
+			$("#audioo").attr("src", "https://indexrprogs.netlify.com/" + $(this).children("option:selected").val());
+			document.getElementById("audioo").play();
+		});
+		$("#setit").click(function(){
+			if(parseInt($("#launches").text()) == 0){
+				UI.ErrorMessage("Nem talható egyetlen még indítás előtt álló parancs sem ami a script által volt generálva táblázat formában!", 5000);
+			}else if(parseInt($("#notif_during").val()) / 60 > parseInt($("#notif_time").val())) {
+				UI.ErrorMessage("A hangjelzési folyamat nem tarthat " + $("#notif_during").val() + " másodpercen keresztül mert az már meghaladja az indítás pillanatát is. Az élesítés visszavonva...", 5000);
+			}else{
+				calculations.sort(function(a, b){return a.launch - b.launch}); 
+				$(this).attr("style", "background: red;");
+				$(this).attr("value", "Élesítve!");
+				sound = setInterval(checkForLaunch, 5000);
+				$("head > title").text(">>Élesítve<<");
+			}
+			
+		});
+		$("#stop_play").click(function(){
+			$("td[style='background: yellow;']").attr("style", "background: lime;");
+			$(this).prop("hidden", true);
+			calculations.shift();
+			$("#launches").text(calculations.length);
+			mp = 0;
+		})
+}
+function get_sendable_units_link_format(html_container, from, to){
+	var link_comp = "";
+	var imgs_s = $(html_container).find("[src*='unit/unit_']");
+	var counts = $(html_container).text().match(/\d+/g);
+	if(imgs_s.length == 0){
+		return link_comp;
+	}
+	link_comp += `/game.php?${dep}village=${from}&screen=place&target=${to}`;
+	for(var x = 0; x < imgs_s.length; x++){
+		link_comp += `&${$(imgs_s[x]).attr("src").match(/\/unit_\w+.png/)[0].replace("/unit_", "").replace(".png", "")}`; //unit
+		link_comp += "=" + counts[x]; //count
+	}
+	return link_comp;
+}
+function checkForLaunch(){
+	if(calculations.length == 0){
+		$("#setit").attr("style", "background: #6c4824;");
+		$("#setit").attr("value", "Élesítés!");
+		clearInterval(sound);
+		$("head > title").text(">>Befejezett<<");
+		return;
+	}
+	var time = new Date(); // 13:58:00
+	time.setMinutes(time.getMinutes() + parseInt($("#notif_time").val()))
+	if(gameTimeIsMore){
+		time.setMilliseconds(time.getMilliseconds() + difference);
+	}else{
+		time.setMilliseconds(time.getMilliseconds() - difference);
+	}
+	
+	var send_time = new Date(calculations[0].launch); // 13:56:00
+		
+	if(send_time < time){
+		$(".bbcodetable").eq(calculations[0].table).find("tr").eq(calculations[0].row).find("td").eq(5).attr("style", "background: yellow;");
+		document.getElementById("audioo").play();
+		$("#stop_play").prop("hidden", false);
+		mp += 5;
+	}
+	if(mp >= parseInt($("#notif_during").val())){
+		$(".bbcodetable").eq(calculations[0].table).find("tr").eq(calculations[0].row).find("td").eq(5).attr("style", "background: red;");
+		$("#stop_play").prop("hidden", true);
+		calculations.shift();
+		$("#launches").text(calculations.length);
+		mp = 0;
+	}
+}
+/*
+			******************************************
+			
+			***** HTML AND PRETTY PART COMPONENTS ****
+			
+			******************************************
+*/
+
+function script_main_form(){
+	if(platform == "forum"){
+		var selector = $("#recent-posts-container").eq(0);
+		$(`<div id = "script_main_form">
+				<a class = "open_forum" href = "javascript:;" style = "float: right; margin-left: 10px;">» Ugrás a fórumra</a>
+				<br>
+				<img src="https://indexrprogs.netlify.com/img/rnn.png">
+				<br>
+				<div id = "probl_post">
+				</div>
+				<div id="script_step_one">
+					<br>
+					<label style = "font-weight: bold;">» Pipáld be azokat a játékosokat akiknek a vonatjait szeretnéd hogy beolvassa a script - </label><br>
+					${allowed_players('first_step')}<br>
+					<a href="javascript:;" onclick = "create_loader();load_forum_pages();">» A fórum további oldalainak betöltése</a><br>
+					<a href="javascript:;" onclick = "train_listing()">» Vonatok beolvasása</a>
+				</div>
+				<div id="script_step_two" style = "display: none;">
+					<div id = "list_check_butts" style = "display: none;">
+						<a href="javascript:;" onclick = "select_villages()">» Az összes célpont falu kiválasztása</a><br>
+						<a href="javascript:;" onclick = "deselect_villages()">» Az összes célpont falu kiválasztásának megszűntetése</a><br>
+						<a href="javascript:;" onclick = "select_train_snob()">» Minden vonatnál pipálja ki a soron következő nemesek közül ezt - </a>
+						<select id = "snob_check" style = "width: 50px;"><option value = "0">1</option><option value = "1" selected>2</option><option value = "2">3</option><option value = "3">4</option><option value = "4">5</option></select><br>
+						<a href="javascript:;" onclick = "select_accelerators_for()">» Ennek a játékosnak a falvainál ezt az erősítés gyorsítót válassza ki</a> 
+						<select id = "for_player_accelerator" style = "width: 100px; margin-top: 3px;"></select> -> 
+						<select id = "slected_accelerator" style = "width: 55px;">${accelerator_listing()}</select><br><br>
+						<label style = "font-weight: bold;">Alul láthatóak a script által beolvasott vonatok és azok adatai. Ha a célpont falukba valaki küldött erősítést a klántársaid közül, akkor azt a script feltünteti a vonatoknál az érkezési időtől függően a megfelelő pozícióra helyezve. Ha az erősítést küldő játékos megosztotta veled a támadásait, akkor az érkező egységek mennyiségét is.<br>Kiválaszthatod hogy a beolvasott célpont falvak közül melyiknél szeretnél vágni, illetve azt is hogy a vonatnak melyik nemes érkezési idejére kalkuláljon a script. Ha készen vagy, akkor kattints a "Tovább" gombra.</label><br><br>
+						<input class = "btn" type = "button" value = "Tovább" onclick = "third_step()">
+					</div><br>
+					<div id = "trains_list_container"></div><br>
+				</div>
+				<div id="script_step_three" style = "display: none;">
+					Ezt a falucsportodat használja a script a kalkulálásokhoz - 
+					<select id = "selected_village_group" style = "width: 80px;">${get_village_groups()}</select><br>
+					<input id = "cuts_per_village" type = "text" value = "${storage_keys.cuts_per_village}" style = "width: 30px; margin-right: 4px">db. vágási tervezetet készítsen minden vonatra<br>
+					<input id = "launch_time_exceptions" type = "checkbox"> 
+					<input id = "launch_time_exceptions_min" type = "text" value = "${storage_keys.launch_time_exceptions_min}" style = "width: 30px;" disabled> - 
+					<input id = "launch_time_exceptions_max" type = "text" value = "${storage_keys.launch_time_exceptions_max}" style = "width: 30px;" disabled> 
+					órák közé ne essen indítás<br><br>
+					<label style = "font-weight: bold;">A script azokat a falvaidat fogja felhasználni a falucsoportból a tervezéshez, ahol az alábbi egységsablonok közül valamelyiknek a sereg mennyisége megtalálható azokban.</label> 
+					<ul>
+						<li>Egy falu többször is felhasználható ha marad további egység valamelyik sablonhoz</li>
+						<li>Egy sablon ismétlődhet ugyan azon a falun ha van elég egység hozzá</li>
+						<li>A sablonok közül a priorítás mindig a fentebbiké, azokat nézi a script elsőként a vágó falvaknál</li>
+					</ul>
+					<div id = "fix_units_samples">
+						${load_samples("fix_units")}
+					</div>
+					<br>
+					<table id = "script_stat" class = "vis">
+						<tbody>
+							<tr>
+								<th colspan = "2">Szervezési stat</th>
+							</tr>
+							<tr>
+								<td>Vágandó vonatok száma</td>
+								<td><label id = "targets_count" class = "bold">0</label></td>
+							</tr>
+							<tr>
+								<td>Szükséges vágási tervezetek összáma</td>
+								<td><label id = "needed_projects_count" class = "bold">0</label></td>
+							</tr>	
+							<tr>
+								<td>Vágni alkalmas falvaid összszáma</td>
+								<td><label id = "cutter_villages_count" class = "bold">0</label></td>
+							</tr>	
+							<tr>
+								<td>Összesen ennyi vágást végezhetnek el a falvaid</td>
+								<td><label id = "available_cuts" class = "bold">0</label></td>
+							</tr>
+							<tr>
+								<td id = "stat_check_status" colspan = "2"></td>
+							</tr>								
+						</tbody>
+					</table>
+					<div id = "sc_tables"></div>
+					<br>
+					<input class = "btn" type = "button" value = "Vissza a vonatokhoz" onclick = "step_back()">
+					<input class = "btn" type = "button" value = "Szervezés" onclick = "calculating();">
+				</div>
+			</div>`).insertAfter(selector);
+	}
+	//-------------------------------------------------------------
+	if(platform == "incommings"){
+		$("#incomings_form").eq(0).prepend(`<div id = "script_main_form">
+				<a class = "open_forum" href = "javascript:;" style = "float: right; margin-left: 10px;">» Ugrás a fórumra</a>
+				<br>
+				<img src="https://indexrprogs.netlify.com/img/rnn.png">
+				<br>
+				<div id = "probl_post">
+				</div>
+				<div id="script_step_one">
+					<label style = "font-weight: bold;">» Pipáld be azokat a nemes parancsokat amelynek az érkezési idejére szeretnéd hogy tervezzen a script</label><br><br>
+					Aktívált erősítés gyorsítód - 
+					<select id = "my_accelerator" style = "width: 100px;">${accelerator_listing()}</select><br>
+					<a href="javascript:;" onclick = "incomming_train_listing()">» Parancsok beolvasása</a>
+				</div>
+				<div id="script_step_two" style = "display: none;">
+					<div id = "list_check_butts" style = "display: none;">
+						<label style = "font-weight: bold;">Alul láthatóak a script által beolvasott parancsok és azok adatai. Ellenőrízd őket, majd kattints a "Tovább" gombra.</label><br><br>
+						<input class = "btn" type = "button" value = "Tovább" onclick = "third_step()">
+					</div><br>
+					<div id = "trains_list_container"></div><br>
+				</div>
+				<div id="script_step_three" style = "display: none;">
+					Ezt a falucsportodat használja a script a kalkulálásokhoz - 
+					<select id = "selected_village_group" style = "width: 80px;">${get_village_groups()}</select><br>
+					<input id = "cuts_per_village" type = "text" value = "${storage_keys.cuts_per_village}" style = "width: 30px; margin-right: 4px">db. vágási tervezetet készítsen minden kiválaszott nemeses parancsra<br>
+					<input id = "launch_time_exceptions" type = "checkbox"> 
+					<input id = "launch_time_exceptions_min" type = "text" value = "${storage_keys.launch_time_exceptions_min}" style = "width: 30px;" disabled> - 
+					<input id = "launch_time_exceptions_max" type = "text" value = "${storage_keys.launch_time_exceptions_max}" style = "width: 30px;" disabled> 
+					órák közé ne essen indítás<br><br>
+					<label style = "font-weight: bold;">A script azokat a falvaidat fogja felhasználni a falucsoportból a tervezéshez, ahol az alábbi egységsablonok közül valamelyiknek a sereg mennyisége megtalálható azokban.</label> 
+					<ul>
+						<li>Egy falu többször is felhasználható ha marad további egység valamelyik sablonhoz</li>
+						<li>Egy sablon ismétlődhet ugyan azon a falun ha van elég egység hozzá</li>
+						<li>A sablonok közül a priorítás mindig a fentebbiké, azokat nézi a script elsőként a vágó falvaknál</li>
+					</ul>
+					<div id = "fix_units_samples">
+						${load_samples("fix_units")}
+					</div>
+					<br>
+					<table id = "script_stat" class = "vis">
+						<tbody>
+							<tr>
+								<th colspan = "2">Szervezési stat</th>
+							</tr>
+							<tr>
+								<td>Vágandó vonatok száma</td>
+								<td><label id = "targets_count" class = "bold">0</label></td>
+							</tr>
+							<tr>
+								<td>Szükséges vágási tervezetek összáma</td>
+								<td><label id = "needed_projects_count" class = "bold">0</label></td>
+							</tr>	
+							<tr>
+								<td>Vágni alkalmas falvaid összszáma</td>
+								<td><label id = "cutter_villages_count" class = "bold">0</label></td>
+							</tr>	
+							<tr>
+								<td>Összesen ennyi vágást bírnak el a falvaid</td>
+								<td><label id = "available_cuts" class = "bold">0</label></td>
+							</tr>
+							<tr>
+								<td id = "stat_check_status" colspan = "2"></td>
+							</tr>								
+						</tbody>
+					</table>
+					<div id = "sc_tables"></div>					
+					<br>
+					<input class = "btn" type = "button" value = "Vissza a vonatokhoz" onclick = "step_back()">
+					<input class = "btn" type = "button" value = "Szervezés" onclick = "calculating()">
+				</div>
+			</div>`);
+	}
+	//-----------------------------------
+	if(platform == "private_mails"){
+		$("#inner-border").eq(0).prepend(`<div id = "script_main_form">
+				<a class = "open_forum" href = "javascript:;" style = "float: right; margin-left: 10px;">» Ugrás a fórumra</a>
+				<br>
+				<img src="https://indexrprogs.netlify.com/img/rnn.png">
+				<br>
+				<div id = "probl_post">
+				</div>
+				<div id="script_step_two" style = "display: block;">
+					<div id = "list_check_butts" style = "display: none;">
+						<a href="javascript:;" onclick = "select_villages()">» Az összes célpont falu kiválasztása</a><br>
+						<a href="javascript:;" onclick = "deselect_villages()">» Az összes célpont falu kiválasztásának megszűntetése</a><br>
+						<a href="javascript:;" onclick = "select_train_snob()">» Minden vonatnál pipálja ki a soron következő nemesek közül ezt - </a>
+						<select id = "snob_check" style = "width: 50px;"><option value = "0">1</option><option value = "1" selected>2</option><option value = "2">3</option><option value = "3">4</option><option value = "4">5</option></select><br><br>
+						<label style = "font-weight: bold;">Alul láthatóak a script által beolvasott vonatok és azok adatai. Ha a célpont falukba valaki küldött erősítést a klántársaid közül, akkor azt a script feltünteti a vonatoknál az érkezési időtől függően a megfelelő pozícióra helyezve. Ha az erősítést küldő játékos megosztotta veled a támadásait, akkor az érkező egységek mennyiségét is.<br>Kiválaszthatod hogy a beolvasott célpont falvak közül melyiknél szeretnél vágni, illetve azt is hogy a vonatnak melyik nemes érkezési idejére kalkuláljon a script. Ha készen vagy, akkor kattints a "Tovább" gombra.</label><br><br>
+						<input class = "btn" type = "button" value = "Tovább" onclick = "third_step()">
+					</div><br>
+					<div id = "trains_list_container"></div><br>
+				</div>
+				<div id="script_step_three" style = "display: none;">
+					Ezt a falucsportodat használja a script a kalkulálásokhoz - 
+					<select id = "selected_village_group" style = "width: 80px;">${get_village_groups()}</select><br>
+					<input id = "cuts_per_village" type = "text" value = "${storage_keys.cuts_per_village}" style = "width: 30px; margin-right: 4px">db. vágási tervezetet készítsen minden vonatra<br>
+					<input id = "launch_time_exceptions" type = "checkbox"> 
+					<input id = "launch_time_exceptions_min" type = "text" value = "${storage_keys.launch_time_exceptions_min}" style = "width: 30px;" disabled> - 
+					<input id = "launch_time_exceptions_max" type = "text" value = "${storage_keys.launch_time_exceptions_max}" style = "width: 30px;" disabled> 
+					órák közé ne essen indítás<br><br>
+					<label style = "font-weight: bold;">A script azokat a falvaidat fogja felhasználni a falucsoportból a tervezéshez, ahol az alábbi egységsablonok közül valamelyiknek a sereg mennyisége megtalálható azokban.</label> 
+					<ul>
+						<li>Egy falu többször is felhasználható ha marad további egység valamelyik sablonhoz</li>
+						<li>Egy sablon ismétlődhet ugyan azon a falun ha van elég egység hozzá</li>
+						<li>A sablonok közül a priorítás mindig a fentebbiké, azokat nézi a script elsőként a vágó falvaknál</li>
+					</ul>
+					<div id = "fix_units_samples">
+						${load_samples("fix_units")}
+					</div>
+					<br>
+					<table id = "script_stat" class = "vis">
+						<tbody>
+							<tr>
+								<th colspan = "2">Szervezési stat</th>
+							</tr>
+							<tr>
+								<td>Vágandó vonatok száma</td>
+								<td><label id = "targets_count" class = "bold">0</label></td>
+							</tr>
+							<tr>
+								<td>Szükséges vágási tervezetek összáma</td>
+								<td><label id = "needed_projects_count" class = "bold">0</label></td>
+							</tr>	
+							<tr>
+								<td>Vágni alkalmas falvaid összszáma</td>
+								<td><label id = "cutter_villages_count" class = "bold">0</label></td>
+							</tr>	
+							<tr>
+								<td>Összesen ennyi vágást bírnak el a falvaid</td>
+								<td><label id = "available_cuts" class = "bold">0</label></td>
+							</tr>
+							<tr>
+								<td id = "stat_check_status" colspan = "2"></td>
+							</tr>								
+						</tbody>
+					</table>
+					<div id = "sc_tables"></div>
+					<br>
+					<input class = "btn" type = "button" value = "Vissza a vonatokhoz" onclick = "step_back()">
+					<input class = "btn" type = "button" value = "Szervezés" onclick = "calculating()">
+				</div>
+			</div>`);
+		train_listing();
+	}
+	
+}
+function create_loader(){
+	$("body").append(`
+			<div id = "loader" >
+				<label id= "loading_state" class = "loader_text">Betöltés...</label>
+				<div id="spin"></div>
+			</div>
+	`);
+}
+function script_css(){
+	$("body").append(`<style>
+	#script_stat{
+		width: 50%;
+		border: 1px solid #8c5f0d;
+		border-collapse: separate;
+		border-spacing: 3px 2px;
+		display: none;
+	}
+	.bold{
+		font-weight: bold;
+	}
+	.sample_container{
+		border: 1px solid #8c5f0d;
+		padding: 4px;
+		margin: 4px;
+	}
+	.block_beauty{
+		border: 1px solid #8c5f0d;
+		padding: 4px;
+		margin: 4px;
+	}
+	hr{
+		color: #8c5f0d;
+	}
+	.trains_containers{
+		padding-bottom: 8px;
+	}
+	#script_main_form{
+		border: 1px solid #8c5f0d;
+		padding: 8px;
+		margin: 4px;
+	}
+	.loader_text{
+		color: red;
+		font-weight: bold;
+	}
+	#spin{
+		position: absolute;
+		left: 290px;
+		top: 2px;
+		border: 5px double #f3f3f336;
+		border-top: 5px double red; 
+		border-radius: 50%;
+		width: 20px;
+		height: 20px;
+		animation: spin 2s linear infinite;
+	}
+	#loader{
+		padding: 10px 0px 0px 5px;
+		height: 25px;
+		width: 320px;
+		position: fixed;
+		top: 52px;
+		border: 2px solid darkslategrey;
+		border-radius: 5px;
+		background: black;
+    }</style>`);
+}
